@@ -1,0 +1,261 @@
+import pygame
+import random
+import sys
+
+# Inicialização do Pygame
+pygame.init()
+
+# Configurações da Tela
+WIDTH, HEIGHT = 480, 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Defesa Espacial - Python")
+
+# Cores
+BLACK = (5, 5, 16)
+WHITE = (255, 255, 255)
+CYAN = (0, 255, 255)
+RED = (255, 68, 68)
+ORANGE = (255, 153, 0)
+GRAY = (80, 80, 80)
+
+# Relógio para controlar o FPS
+clock = pygame.time.Clock()
+
+# Fontes
+font = pygame.font.SysFont("Arial", 18)
+font_large = pygame.font.SysFont("Arial", 28, bold=True)
+
+class Game:
+    def __init__(self):
+        self.score = 0
+        self.high_score = 900
+        self.lives = 3
+        self.game_started = False
+        self.game_over = False
+
+        # Jogador
+        self.player_width = 40
+        self.player_height = 30
+        self.player_x = WIDTH // 2 - self.player_width // 2
+        self.player_y = HEIGHT - 60
+        self.player_speed = 6
+
+        # Listas de elementos
+        self.bullets = []
+        self.meteors = []
+        self.stars = []
+        self.particles = []
+
+        # Criar estrelas de fundo iniciais
+        for _ in range(50):
+            self.stars.append({
+                'x': random.uniform(0, WIDTH),
+                'y': random.uniform(0, HEIGHT),
+                'size': random.uniform(1, 3),
+                'speed': random.uniform(0.5, 2.0)
+            })
+
+    def reset(self):
+        self.score = 0
+        self.lives = 3
+        self.bullets = []
+        self.meteors = []
+        self.particles = []
+        self.game_over = False
+        self.game_started = True
+
+    def spawn_meteor(self):
+        if random.random() < 0.03:
+            radius = random.randint(15, 35)
+            self.meteors.append({
+                'x': random.uniform(radius, WIDTH - radius),
+                'y': -radius,
+                'radius': radius,
+                'speed': random.uniform(2, 4),
+                'rotation': 0,
+                'rot_speed': random.uniform(-0.05, 0.05)
+            })
+
+    def create_explosion(self, x, y):
+        for _ in range(12):
+            self.particles.append({
+                'x': x,
+                'y': y,
+                'dx': random.uniform(-3, 3),
+                'dy': random.uniform(-3, 3),
+                'radius': random.uniform(1, 4),
+                'alpha': 1.0
+            })
+
+    def update(self):
+        if not self.game_started or self.game_over:
+            return
+
+        # Movimento por teclado
+        keys = pygame.key.get_pressed()
+        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+            self.player_x -= self.player_speed
+        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+            self.player_x += self.player_speed
+
+        # Limites da tela
+        if self.player_x < 0:
+            self.player_x = 0
+        if self.player_x + self.player_width > WIDTH:
+            self.player_x = WIDTH - self.player_width
+
+        # Atualizar estrelas de fundo
+        for star in self.stars:
+            star['y'] += star['speed']
+            if star['y'] > HEIGHT:
+                star['y'] = 0
+
+        # Atualizar tiros (lasers)
+        for b in self.bullets[:]:
+            b['y'] -= b['speed']
+            if b['y'] < 0:
+                self.bullets.remove(b)
+
+        # Gerenciar e atualizar meteoros
+        self.spawn_meteor()
+        for m in self.meteors[:]:
+            m['y'] += m['speed']
+            m['rotation'] += m['rot_speed']
+
+            # Colisão Laser vs Metoro
+            for b in self.bullets[:]:
+                dist = ((b['x'] - m['x']) ** 2 + (b['y'] - m['y']) ** 2) ** 0.5
+                if dist < m['radius']:
+                    self.create_explosion(m['x'], m['y'])
+                    if m in self.meteors:
+                        self.meteors.remove(m)
+                    if b in self.bullets:
+                        self.bullets.remove(b)
+                    self.score += 25
+                    if self.score > self.high_score:
+                        self.high_score = self.score
+                    break
+
+            # Colisão Nave vs Metoro
+            player_center_x = self.player_x + self.player_width / 2
+            player_center_y = self.player_y + self.player_height / 2
+            p_dist = ((player_center_x - m['x']) ** 2 + (player_center_y - m['y']) ** 2) ** 0.5
+            if p_dist < m['radius'] + 15:
+                self.create_explosion(player_center_x, player_center_y)
+                if m in self.meteors:
+                    self.meteors.remove(m)
+                self.lives -= 1
+                if self.lives <= 0:
+                    self.game_over = True
+
+            # Meteoros que passaram da tela
+            if m['y'] > HEIGHT + m['radius']:
+                if m in self.meteors:
+                    self.meteors.remove(m)
+                self.score += 5
+
+        # Atualizar Partículas de Explosão
+        for p in self.particles[:]:
+            p['x'] += p['dx']
+            p['y'] += p['dy']
+            p['alpha'] -= 0.03
+            if p['alpha'] <= 0:
+                self.particles.remove(p)
+
+    def draw(self):
+        screen.fill(BLACK)
+
+        # Desenhar Estrelas
+        for star in self.stars:
+            pygame.draw.rect(screen, WHITE, (star['x'], star['y'], star['size'], star['size']))
+
+        # Desenhar Partículas
+        for p in self.particles:
+            color = (255, int(153 * p['alpha']), 0)
+            pygame.draw.circle(screen, color, (int(p['x']), int(p['y'])), int(p['radius']))
+
+        # Desenhar Lasers
+        for b in self.bullets:
+            pygame.draw.rect(screen, CYAN, (b['x'], b['y'], b['width'], b['height']))
+
+        # Desenhar Nave
+        if self.game_started and not self.game_over:
+            points = [
+                (self.player_x + self.player_width / 2, self.player_y),
+                (self.player_x, self.player_y + self.player_height),
+                (self.player_x + self.player_width, self.player_y + self.player_height)
+            ]
+            pygame.draw.polygon(screen, CYAN, points)
+
+        # Desenhar Meteoros
+        for m in self.meteors:
+            pygame.draw.circle(screen, GRAY, (int(m['x']), int(m['y'])), int(m['radius']))
+            pygame.draw.circle(screen, WHITE, (int(m['x']), int(m['y'])), int(m['radius']), 2)
+
+        # Interface (Placar e Vidas)
+        score_text = font.render(f"Pontos: {self.score}", True, WHITE)
+        lives_text = font.render(f"Vidas: {'❤️ ' * self.lives}", True, WHITE)
+        high_text = font.render(f"Recorde: {self.high_score}", True, WHITE)
+
+        screen.blit(score_text, (20, 20))
+        screen.blit(lives_text, (20, 50))
+        screen.blit(high_text, (WIDTH - 150, 20))
+
+        # Telas de Início / Game Over
+        if not self.game_started:
+            overlay = pygame.Surface((WIDTH, HEIGHT))
+            overlay.set_alpha(200)
+            overlay.fill((0, 0, 0))
+            screen.blit(overlay, (0, 0))
+
+            title = font_large.render("DEFESA ESPACIAL", True, CYAN)
+            inst1 = font.render("Aperte ESPAÇO para Jogar", True, WHITE)
+            inst2 = font.render("Use A/D ou Setas para mover, Espaço para atirar", True, WHITE)
+
+            screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 2 - 40))
+            screen.blit(inst1, (WIDTH // 2 - inst1.get_width() // 2, HEIGHT // 2 + 10))
+            screen.blit(inst2, (WIDTH // 2 - inst2.get_width() // 2, HEIGHT // 2 + 45))
+
+        elif self.game_over:
+            overlay = pygame.Surface((WIDTH, HEIGHT))
+            overlay.set_alpha(200)
+            overlay.fill((0, 0, 0))
+            screen.blit(overlay, (0, 0))
+
+            title = font_large.render("FIM DE JOGO", True, RED)
+            score_final = font.render(f"Pontuação Final: {self.score}", True, WHITE)
+            restart = font.render("Aperte ESPAÇO para Reiniciar", True, WHITE)
+
+            screen.blit(title, (WIDTH // 2 - title.get_width() // 2, HEIGHT // 2 - 40))
+            screen.blit(score_final, (WIDTH // 2 - score_final.get_width() // 2, HEIGHT // 2 + 10))
+            screen.blit(restart, (WIDTH // 2 - restart.get_width() // 2, HEIGHT // 2 + 50))
+
+        pygame.display.flip()
+
+# Loop Principal
+game = Game()
+running = True
+
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+        elif event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_SPACE:
+                if not game.game_started or game.game_over:
+                    game.reset()
+                else:
+                    game.bullets.append({
+                        'x': game.player_x + game.player_width / 2 - 2,
+                        'y': game.player_y,
+                        'width': 4,
+                        'height': 12,
+                        'speed': 8
+                    })
+
+    game.update()
+    game.draw()
+    clock.tick(60)
+
+pygame.quit()
+sys.exit()
